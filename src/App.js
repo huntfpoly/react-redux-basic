@@ -1,124 +1,105 @@
-import { useEffect, useState } from "react";
-import queryString from "query-string";
+import { unwrapResult } from '@reduxjs/toolkit';
+import productApi from 'api/productApi';
+import { getMe } from 'app/userSlice';
+import SignIn from 'features/Auth/pages/SignIn';
+import firebase from 'firebase';
+import React, { Suspense, useEffect, useState } from 'react';
+import { useDispatch } from 'react-redux';
+import { BrowserRouter, Redirect, Route, Switch } from 'react-router-dom';
+import { Button } from 'reactstrap';
+import './App.scss';
+import Header from './components/Header';
+import NotFound from './components/NotFound';
 
-import "./App.scss";
-import PostList from "./components/PostList";
-// import ColorBox from "./components/ColorBox";
-// import TodoForm from "./components/TodoForm";
-// import TodoList from "./components/TodoList";
-import Pagination from "./components/Pagination";
-import PostFiltersForm from "./components/PostFiltersForm";
+// Lazy load - Code splitting
+const Photo = React.lazy(() => import('./features/Photo'));
+
+// Configure Firebase.
+const config = {
+  apiKey: process.env.REACT_APP_FIREBASE_API,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+};
+firebase.initializeApp(config);
 
 function App() {
-  // const [todoList, setTodoList] = useState([
-  //   { id: 1, title: "I love Easy Frontend! 😍" },
-  //   { id: 2, title: "We love Easy Frontend! 🥰" },
-  //   { id: 3, title: "They love Easy Frontend! 🚀" },
-  // ]);
-  const [postList, setPostList] = useState([]);
-  const [pagination, setPagination] = useState({
-    _page: 1,
-    _limit: 10,
-    _totalRows: 1,
-  });
-  const [filters, setFilters] = useState({
-    _limit: 10,
-    _page: 1,
-  });
-  // Post list
-  // useEffect(() => {
-  //   async function fetchPostList() {
-  //     // ...
-  //     try {
-  //       const requestUrl =
-  //         "http://js-post-api.herokuapp.com/api/posts?_limit=15&_page=1";
-  //       const response = await fetch(requestUrl);
-  //       const responseJSON = await response.json();
-  //       // console.log({ responseJSON });
+  const [productList, setProductList] = useState([]);
+  const dispatch = useDispatch();
 
-  //       const { data } = responseJSON;
-  //       setPostList(data);
-  //     } catch (error) {
-  //       console.log("Failed to fetch post list: ", error.message);
-  //     }
-  //   }
-
-  //   console.log("POST list effect");
-  //   fetchPostList();
-  // }, []);
-
-  // Pagination
   useEffect(() => {
-    async function fetchPostList() {
-      // ...
+    const fetchProductList = async () => {
       try {
-        // _limit=10&_page=1
-        const paramsString = queryString.stringify(filters);
-        const requestUrl = `http://js-post-api.herokuapp.com/api/posts?${paramsString}`;
-        const response = await fetch(requestUrl);
-        const responseJSON = await response.json();
-        console.log({ responseJSON });
+        const params = {
+          _page: 1,
+          _limit: 10,
 
-        const { data, pagination } = responseJSON;
-        setPostList(data);
-        setPagination(pagination);
+        };
+        const response = await productApi.getAll(params);
+        console.log(response);
+        setProductList(response.data);
       } catch (error) {
-        console.log("Failed to fetch post list: ", error.message);
+        console.log('Failed to fetch product list: ', error);
       }
     }
 
-    console.log("POST list effect");
-    fetchPostList();
-  }, [filters]);
+    fetchProductList();
+  }, []);
 
-  function handlePageChange(newPage) {
-    console.log("New page: ", newPage);
-    setFilters({
-      ...filters,
-      _page: newPage,
+  // Handle firebase auth changed
+  useEffect(() => {
+    const unregisterAuthObserver = firebase.auth().onAuthStateChanged(async (user) => {
+      if (!user) {
+        // user logs out, handle something here
+        console.log('User is not logged in');
+        return;
+      }
+
+      // Get me when signed in
+      // const action = getMe();
+      try {
+        const actionResult = await dispatch(getMe());
+        const currentUser = unwrapResult(actionResult);
+        console.log('Logged in user: ', currentUser);
+      } catch (error) {
+        console.log('Failed to login ', error.message);
+        // show toast error
+      }
     });
+
+    return () => unregisterAuthObserver();
+  }, []);
+
+  const handleButtonClick = async () => {
+    try {
+      const params = {
+        _page: 1,
+        _limit: 10,
+
+      };
+      const response = await productApi.getAll(params);
+      console.log(response);
+    } catch (error) {
+      console.log('Failed to fetch product list: ', error);
+    }
   }
 
-  // TodoList
-  // function handleTodoClick(todo) {
-  //   console.log(todo);
-  //   const index = todoList.findIndex((x) => x.id === todo.id);
-  //   if (index < 0) return;
 
-  //   const newTodoList = [...todoList];
-  //   newTodoList.splice(index, 1);
-  //   setTodoList(newTodoList);
-  // }
-  // // FormValues
-  // function handleTodoFormSubmit(formValues) {
-  //   console.log("Form submit: ", formValues);
-  //   // add new todo to current todo list
-  //   const newTodo = {
-  //     id: todoList.length + 1,
-  //     ...formValues,
-  //   };
-  //   const newTodoList = [...todoList];
-  //   newTodoList.push(newTodo);
-  //   setTodoList(newTodoList);
-  // }
-
-  function handleFiltersChange(newFilters) {
-    console.log("New filters: ", newFilters);
-    setFilters({
-      ...filters,
-      _page: 1,
-      title_like: newFilters.searchTerm,
-    });
-  }
   return (
-    <div className="app">
-      <h1>Welcome to React.js</h1>
-      {/* <ColorBox /> */}
-      {/* <TodoList todos={todoList} onTodoClick={handleTodoClick} /> */}
-      {/* <TodoForm onSubmit={handleTodoFormSubmit} /> */}
-      <PostFiltersForm onSubmit={handleFiltersChange} />
-      <PostList posts={postList} />
-      <Pagination pagination={pagination} onPageChange={handlePageChange} />
+    <div className="photo-app">
+      <Suspense fallback={<div>Loading ...</div>}>
+        <BrowserRouter>
+          <Header />
+
+          <Button onClick={handleButtonClick}>Fetch Product List</Button>
+
+          <Switch>
+            <Redirect exact from="/" to="/photos" />
+
+            <Route path="/photos" component={Photo} />
+            <Route path="/sign-in" component={SignIn} />
+            <Route component={NotFound} />
+          </Switch>
+        </BrowserRouter>
+      </Suspense>
     </div>
   );
 }
